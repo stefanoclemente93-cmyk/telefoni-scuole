@@ -1,0 +1,64 @@
+name: Estrai telefoni
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_codes:
+        description: "Prova: codici sede separati da virgola (vuoto = run normale)"
+        required: false
+        default: ""
+      limit:
+        description: "Pilota: solo le prime N sedi (vuoto = tutte)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: telefoni
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installa dipendenze
+        run: pip install -r requirements.txt
+
+      - name: Esegui estrazione
+        env:
+          TEST_CODES: ${{ inputs.test_codes }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          if [ -n "$TEST_CODES" ]; then
+            python estrai_telefoni.py --test "$TEST_CODES" --out output
+          else
+            ARGS="--input master.csv --out output --max-minutes 330"
+            if [ -n "$LIMIT" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+            python estrai_telefoni.py $ARGS
+          fi
+
+      - name: Salva risultati e cache nel repository
+        if: always()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add output
+          git commit -m "Aggiornamento telefoni" || echo "Niente da salvare"
+          git push
+
+      - name: Allega i risultati al run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telefoni-output
+          path: output/
